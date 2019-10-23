@@ -1,0 +1,31 @@
+parse crontab file
+	comment
+	blank lines
+	servertz
+	jobtz
+	jobentry
+parse entry into fields
+	mins,hour,dom,month,dow,command
+	if prevline is #jobtz
+		convert job time
+
+expand month
+	if * then 1
+	else months
+
+for n in months:
+	expand dom
+		if * then 1
+		else dom in n
+
+	if dow = * then ignore
+		expand d_wo_day dom # for dow
+			if dow of d_wo_day is not set in dow then set
+
+	expand hour
+		if * then 1
+		else expand hours
+
+	expand mins
+		if * then 1
+		else expand mins
