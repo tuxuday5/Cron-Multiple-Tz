@@ -3,12 +3,12 @@ import re
 import pytz
 import calendar
 import operator
+import pprint
 
 CRON_FILE = 'cron.file'
 
 class InvalidCronEntryError(Exception):
     pass
-
 
 DEFAULT_VALUES = {
     'minute' : '',
@@ -279,11 +279,10 @@ def GetLineAsRecord(line):
         raise InvalidCronEntryError(line)
 
 def PrintEntry(job):
-    entry = ''
     for k in JOB_ENTRY_ORDER:
-        entry += ' ' + job[k]
+        print(job[k],end=' ')
 
-    print(entry)
+    print('',flush=True)
 
 SetDefaultValues()
 SetCronFieldAsteriskDefaultValues()
@@ -299,19 +298,20 @@ with open(CRON_FILE) as cronFileHandle:
 
         if REGEX_PATTERNS['server_tz'].match(line):
             serverTz = line.split('=')[1].strip()
-            print(serverTz)
+            print(line,end='',flush=True)
         elif REGEX_PATTERNS['comment'].match(line):
-            pass
+            print(line,end='',flush=True)
         elif REGEX_PATTERNS['blank_line'].match(line):
-            pass
+            print(line,end='',flush=True)
         elif REGEX_PATTERNS['variable'].match(line):
-            print(line)
+            print(line,end='',flush=True)
         else:
             entryAsRecord = GetLineAsRecord(line)
-            print(line)
+            #print(line,end='',flush=True)
             if isJobTzSet:
                 tzAdjustedEntry = AdjustForTz(entryAsRecord,serverTz,jobTz)
                 tzAdjustedEntryUnique = list(map(dict, frozenset(frozenset(tuple(e.items()) for e in tzAdjustedEntry))))
+                #pprint.pprint(tzAdjustedEntryUnique)
                 tzAdjustedEntryUnique.sort(key=operator.itemgetter('month','dom','dow','hour','minute'))
                 for entry in tzAdjustedEntryUnique:
                     #print(entry)
