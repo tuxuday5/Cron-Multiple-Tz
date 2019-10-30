@@ -12,9 +12,6 @@ PATH=/usr/lib/sysstat:/usr/sbin:/usr/sbin:/usr/bin:/sbin:/bin
 * 20 * * 1 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
 #
 # JOB_TZ=Europe/London
-* 5 * * 1-5 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
-#
-# JOB_TZ=Europe/London
 30 5 * * 7 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
 #
 # JOB_TZ=Asia/Tokyo
