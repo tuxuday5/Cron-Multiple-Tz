@@ -293,7 +293,7 @@ with open(CRON_FILE) as cronFileHandle:
     for line in cronFileHandle:
         if REGEX_PATTERNS['job_tz'].match(line):
             jobTz = line.split('=')[1].strip()
-            print(jobTz)
+            #print(jobTz)
             isJobTzSet = True
 
         if REGEX_PATTERNS['server_tz'].match(line):
