@@ -145,7 +145,6 @@ def ExpandMonths(inp):
         SetCronFieldAsterisk('month')
         return DEFAULT_VALUES['month']
         #return [x for x in range(1,12+1)]
-        #return [DEFAULT_VALUES['month']]
     else:
         return NormalizeEntry(inp)
 
@@ -154,7 +153,6 @@ def ExpandDoM(inp):
         SetCronFieldAsterisk('dom')
         return [DEFAULT_VALUES['dom']]
         #return [x for x in range(1,31+1)]
-        #return DEFAULT_VALUES['dom']
     else:
         return NormalizeEntry(inp)
 
@@ -163,7 +161,6 @@ def ExpandDoW(inp):
         SetCronFieldAsterisk('dow')
         return [x for x in range(1,7+1)]
         #return DEFAULT_VALUES['dow']
-        #return [DEFAULT_VALUES['dow']]
     else:
         return NormalizeEntry(inp)
 
@@ -172,8 +169,6 @@ def ExpandHour(inp):
         SetCronFieldAsterisk('hour')
         return [x for x in range(0,23+1)]
         #return DEFAULT_VALUES['hour']
-        #return [DEFAULT_VALUES['hour']]
-        #return [x for x in range(0,23+1)]
     else:
         return NormalizeEntry(inp)
 
@@ -182,7 +177,6 @@ def ExpandMinutes(inp):
         SetCronFieldAsterisk('minute')
         return [x for x in range(0,59+1)]
         #return DEFAULT_VALUES['minute']
-        #return [DEFAULT_VALUES['minute']]
     else:
         return NormalizeEntry(inp)
 
@@ -238,7 +232,6 @@ def AdjustForTz(record,serverTz,jobTz):
     return adjustedEntries
 
 def ReplaceEntryWithServerTs(entry,serverTs):
-    #if REGEX_PATTERNS['astreisk'].match(inp):
     retVal = {}
 
     retVal['command'] = entry['command']
