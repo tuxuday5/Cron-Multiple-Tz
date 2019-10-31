@@ -31,21 +31,20 @@ Given situation, my server in UK - which has local timezone as Europe/London. On
 30 5 * * 1 root command -v debian-sa1 > /dev/null && debian-sa1 1 1 ##JOB5
 ```
 
-Here ***#SERVER_TZ*** specifies the time zone of the cron daemon. 
-***#JOB_TZ*** specifies the timezone of the job. User doesn't need to convert from job tz to server tz manually.
-In the given case, cron deamon is running in Asia/Calcutta timezone.
-JOB1 is in Europe/London tz. In other words the job is scheduled to run every monday at 20hrs London time.
-JOB2 is in America/New_York tz. In other words the job is scheduled to run every monday at 20hrs New_York time
-JOB5 is in Tokyo tz. Job is scheduled to run every monday at 5.30 japan time.
+Here ***#SERVER_TZ*** specifies the time zone of the cron daemon.   
+***#JOB_TZ*** specifies the timezone of the job. User doesn't need to convert from job tz to server tz manually.  
 
-**entries should in the file named cron.file in the same directory as the script cron_tz_conv.py**
+   * Cron deamon is running in Asia/Calcutta timezone.   
+   * JOB1 is in Europe/London tz. In other words the job is scheduled to run every monday at 20hrs London time.   
+   * JOB2 is in America/New_York tz. In other words the job is scheduled to run every monday at 20hrs New_York time   
+   * JOB5 is in Tokyo tz. Job is scheduled to run every monday at 5.30 japan time.   
 
 # Usage
 
 Running the script would produce cron entries in server tz.
 
 ```
-$  python3 cron_tz_conv.py
+$  python3 cron_tz_conv.py -i input_cron_file -o adjusted_out_cron_file
 # The first element of the path is a directory where the debian-sa1
 # script is located
 PATH=/usr/lib/sysstat:/usr/sbin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -101,10 +100,14 @@ PATH=/usr/lib/sysstat:/usr/sbin:/usr/sbin:/usr/bin:/sbin:/bin
 ....
 ```
 
+   * -i specifiles input cron file. this file can contain jobs in varous timezones.   
+   * -o contains jobs scheduled time converted to local timezone, **SERVER_TZ** . Defauts to stdout.   
+
+
 The script converts only jobs that have JOB_TZ in their previous line. Rest of the lines are written as it is.
 As we can see, job scheduled in Asia/Tokyo timezone as monday 5.30 is converted to cron daemon timezone Asia/Calcutta 2.00.
 
-User needs to capture this output and use it as his crontab file.
+User can use the file as his crontab file.
 
 There are some odd tz conversions. 
 ```

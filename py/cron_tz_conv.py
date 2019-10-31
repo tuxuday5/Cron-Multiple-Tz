@@ -3,9 +3,8 @@ import re
 import pytz
 import calendar
 import operator
-import pprint
-
-CRON_FILE = 'cron.file'
+import argparse
+import sys
 
 class InvalidCronEntryError(Exception):
     pass
@@ -146,7 +145,6 @@ def ExpandMonths(inp):
         SetCronFieldAsterisk('month')
         return DEFAULT_VALUES['month']
         #return [x for x in range(1,12+1)]
-        #return [DEFAULT_VALUES['month']]
     else:
         return NormalizeEntry(inp)
 
@@ -155,7 +153,6 @@ def ExpandDoM(inp):
         SetCronFieldAsterisk('dom')
         return [DEFAULT_VALUES['dom']]
         #return [x for x in range(1,31+1)]
-        #return DEFAULT_VALUES['dom']
     else:
         return NormalizeEntry(inp)
 
@@ -164,7 +161,6 @@ def ExpandDoW(inp):
         SetCronFieldAsterisk('dow')
         return [x for x in range(1,7+1)]
         #return DEFAULT_VALUES['dow']
-        #return [DEFAULT_VALUES['dow']]
     else:
         return NormalizeEntry(inp)
 
@@ -173,8 +169,6 @@ def ExpandHour(inp):
         SetCronFieldAsterisk('hour')
         return [x for x in range(0,23+1)]
         #return DEFAULT_VALUES['hour']
-        #return [DEFAULT_VALUES['hour']]
-        #return [x for x in range(0,23+1)]
     else:
         return NormalizeEntry(inp)
 
@@ -183,7 +177,6 @@ def ExpandMinutes(inp):
         SetCronFieldAsterisk('minute')
         return [x for x in range(0,59+1)]
         #return DEFAULT_VALUES['minute']
-        #return [DEFAULT_VALUES['minute']]
     else:
         return NormalizeEntry(inp)
 
@@ -239,7 +232,6 @@ def AdjustForTz(record,serverTz,jobTz):
     return adjustedEntries
 
 def ReplaceEntryWithServerTs(entry,serverTs):
-    #if REGEX_PATTERNS['astreisk'].match(inp):
     retVal = {}
 
     retVal['command'] = entry['command']
@@ -278,45 +270,60 @@ def GetLineAsRecord(line):
     else:
         raise InvalidCronEntryError(line)
 
-def PrintEntry(job):
+def PrintLine(line,fileObj=sys.stdout,end="",flush=True):
+    print(line,file=fileObj,end=end,flush=flush)
+
+def PrintEntry(job,fileObj):
     for k in JOB_ENTRY_ORDER:
-        print(job[k],end=' ')
+        PrintLine(job[k],fileObj=fileObj,end=' ',flush=False)
 
-    print('',flush=True)
+    PrintLine('',fileObj=fileObj,end="\n")
 
-SetDefaultValues()
-SetCronFieldAsteriskDefaultValues()
-with open(CRON_FILE) as cronFileHandle:
-    serverTz = ''
-    jobTz = ''
-    isJobTzSet = False
-    for line in cronFileHandle:
-        if REGEX_PATTERNS['job_tz'].match(line):
-            jobTz = line.split('=')[1].strip()
-            #print(jobTz)
-            isJobTzSet = True
+def Main(inFile,outFile=None):
+    SetDefaultValues()
+    SetCronFieldAsteriskDefaultValues()
 
-        if REGEX_PATTERNS['server_tz'].match(line):
-            serverTz = line.split('=')[1].strip()
-            print(line,end='',flush=True)
-        elif REGEX_PATTERNS['comment'].match(line):
-            print(line,end='',flush=True)
-        elif REGEX_PATTERNS['blank_line'].match(line):
-            print(line,end='',flush=True)
-        elif REGEX_PATTERNS['variable'].match(line):
-            print(line,end='',flush=True)
-        else:
-            entryAsRecord = GetLineAsRecord(line)
-            #print(line,end='',flush=True)
-            if isJobTzSet:
-                tzAdjustedEntry = AdjustForTz(entryAsRecord,serverTz,jobTz)
-                tzAdjustedEntryUnique = list(map(dict, frozenset(frozenset(tuple(e.items()) for e in tzAdjustedEntry))))
-                #pprint.pprint(tzAdjustedEntryUnique)
-                tzAdjustedEntryUnique.sort(key=operator.itemgetter('month','dom','dow','hour','minute'))
-                for entry in tzAdjustedEntryUnique:
-                    #print(entry)
-                    PrintEntry(entry)
-                isJobTzSet = False
+    if outFile == None:
+        outHand=sys.stdout
+    else:
+        outHand=open(outFile,'w')
+
+    with open(inFile) as cronFileHandle:
+        serverTz = ''
+        jobTz = ''
+        isJobTzSet = False
+        for line in cronFileHandle:
+            if REGEX_PATTERNS['job_tz'].match(line):
+                jobTz = line.split('=')[1].strip()
+                isJobTzSet = True
+    
+            if REGEX_PATTERNS['server_tz'].match(line):
+                serverTz = line.split('=')[1].strip()
+                PrintLine(line,fileObj=outHand)
+            elif REGEX_PATTERNS['comment'].match(line):
+                PrintLine(line,fileObj=outHand)
+            elif REGEX_PATTERNS['blank_line'].match(line):
+                PrintLine(line,fileObj=outHand)
+            elif REGEX_PATTERNS['variable'].match(line):
+                PrintLine(line,fileObj=outHand)
             else:
-                PrintEntry(entryAsRecord)
-                #tzAdjustedEntry = entryAsRecord
+                entryAsRecord = GetLineAsRecord(line)
+                #PrintLine(line,fileObj=outHand)
+                if isJobTzSet:
+                    tzAdjustedEntry = AdjustForTz(entryAsRecord,serverTz,jobTz)
+                    tzAdjustedEntryUnique = list(map(dict, frozenset(frozenset(tuple(e.items()) for e in tzAdjustedEntry))))
+                    tzAdjustedEntryUnique.sort(key=operator.itemgetter('month','dom','dow','hour','minute'))
+                    for entry in tzAdjustedEntryUnique:
+                        PrintEntry(entry,fileObj=outHand)
+                    isJobTzSet = False
+                else:
+                    PrintEntry(entryAsRecord,fileObj=outHand)
+
+
+if __name__ == '__main__':
+    argParser = argparse.ArgumentParser()
+    argParser.add_argument('-i','--infile',type=str,required=True)
+    argParser.add_argument('-o','--outfile',type=str,required=False)
+
+    parsedArgs = vars(argParser.parse_args())
+    Main(parsedArgs['infile'],outFile=parsedArgs['outfile'])
