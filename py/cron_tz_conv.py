@@ -46,6 +46,7 @@ REGEX_PATTERNS = {
 }
 
 JOB_ENTRY_ORDER = ['minute', 'hour', 'month', 'dom', 'dow', 'command']
+ENTRY_SORT_ORDER = [ 'month', 'dom', 'dow', 'hour', 'minute' ]
 CRON_FILED_HAS_ASTERISK = { }
 
 def SetCronFieldAsteriskDefaultValues():
@@ -279,6 +280,17 @@ def PrintEntry(job,fileObj):
 
     PrintLine('',fileObj=fileObj,end="\n")
 
+def GenerateSortKey(entry):
+    key = ''
+
+    for x in ENTRY_SORT_ORDER:
+        if entry[x] == '*':
+            key += '01'
+        else:
+            key += "{:02d}".format(int(entry[x]))
+
+    return int(key)
+
 def Main(inFile,outFile=None):
     SetDefaultValues()
     SetCronFieldAsteriskDefaultValues()
@@ -312,7 +324,8 @@ def Main(inFile,outFile=None):
                 if isJobTzSet:
                     tzAdjustedEntry = AdjustForTz(entryAsRecord,serverTz,jobTz)
                     tzAdjustedEntryUnique = list(map(dict, frozenset(frozenset(tuple(e.items()) for e in tzAdjustedEntry))))
-                    tzAdjustedEntryUnique.sort(key=operator.itemgetter('month','dom','dow','hour','minute'))
+                    #tzAdjustedEntryUnique.sort(key=operator.itemgetter('month','dom','dow','hour','minute'))
+                    tzAdjustedEntryUnique.sort(key=GenerateSortKey)
                     for entry in tzAdjustedEntryUnique:
                         PrintEntry(entry,fileObj=outHand)
                     isJobTzSet = False
