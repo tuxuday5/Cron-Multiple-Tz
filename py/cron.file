@@ -3,21 +3,44 @@
 PATH=/usr/lib/sysstat:/usr/sbin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # SERVER_TZ=Asia/Calcutta
-# Activity reports every 10 minutes everyday
-5-10,20-30/2 6,7 7 8 1 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+# The first element of the path is a directory where the debian-sa1
+# script is located
+PATH=/usr/lib/sysstat:/usr/sbin:/usr/sbin:/usr/bin:/sbin:/bin
 # JOB_TZ=Europe/London
-* 20 * * 1 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
-#
-# JOB_TZ=America/New_York
-* 20 * * 1 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
-#
-# JOB_TZ=Europe/London
-30 5 * * 7 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
-#
-# JOB_TZ=Asia/Tokyo
-30 5 * * 1 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+* 20 30,31 3 1-7 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+### JOB_TZ=Europe/London
+###* 20 1-30 10 * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+##* 20 30/2 10 * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+###
+## JOB_TZ=Europe/London
+#0 11 5-9,20-24 5 * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+## JOB_TZ=Australia/Brisbane
+#30 10 6-10 12 * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+##
+## JOB_TZ=Australia/Perth
+#30 10 16-20 12 * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+##
+## JOB_TZ=Australia/Melbourne
+#30 10 26-31 12 * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+##
+## JOB_TZ=Australia/Sydney
+#30 10 2-6 1 * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
 
-# Additional run at 23:59 to rotate the statistics file
-#59 23 * * * command -v debian-sa1 > /dev/null && debian-sa1 60 2
-
-#09,39 *     * * *     root   [ -x /usr/lib/php5/maxlifetime ] && [ -x /usr/lib/php5/sessionclean ] && [ -d /var/lib/php5 ] && /usr/lib/php5/sessionclean /var/lib/php5 $(/usr/lib/php5/maxlifetime)
+#JOB_TZ=Asia/Tokyo
+5-10,20-30/2 6,7 8 7 1 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+## JOB_TZ=Europe/London
+#* 20 1-10 3 1-7 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+## JOB_TZ=Europe/London
+#* 20 * * 1-7 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+## JOB_TZ=Europe/London
+#* 20 * * * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+###
+## JOB_TZ=America/New_York
+#* 20 * * 1 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+##
+## JOB_TZ=Asia/Tokyo
+#30 5 1-10 1-5 1-5 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+#
+## JOB_TZ=Europe/London
+#* 20 1-31 1-12 1-7 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+##* 20 1-31 1-12 1-7 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
