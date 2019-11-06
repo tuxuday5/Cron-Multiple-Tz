@@ -45,8 +45,6 @@ VALID_SPECIAL_STRINGS = [
     '@hourly',
 ]
 
-#monthNames = calender.month_abbr
-#dayOfWeekNames = calender.day_abbr
 
 REGEX_PATTERNS = {
     'server_tz' : re.compile('^#\s*SERVER_TZ='),
@@ -60,15 +58,44 @@ REGEX_PATTERNS = {
     'range' : re.compile('-'),
     'list' : re.compile(','),
     'step' : re.compile('/'),
+    'week_day_abbr' : re.compile('mon|tue|wed|thu|fri|sat|sun',re.I),
+    'month_abbr' : re.compile('jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec',re.I)
 }
 
 ENTRY_ORDER = ['minute', 'hour', 'dom', 'month', 'dow', 'command']
 ENTRY_TIME_FIELDS = [ 'month', 'dom', 'dow', 'hour', 'minute' ]
 ENTRY_SORT_ORDER = [ 'month', 'dom', 'hour', 'minute', 'dow'] ## sort in this order
 SQUEEZE_ORDER = [ 'minute', 'hour', 'dom', 'month', 'dow'] ## squeeze in this order
+WEEK_DAY_SHORT_NAMES = []
+MONTH_SHORT_NAMES = []
+
+def SetWeekDayShortNames():
+    global WEEK_DAY_SHORT_NAMES
+    WEEK_DAY_SHORT_NAMES = []
+    for i in range(7):
+        WEEK_DAY_SHORT_NAMES.append(calendar.day_abbr[i].lower())
+
+def SetMonthShortNames():
+    global MONTH_SHORT_NAMES
+    MONTH_SHORT_NAMES = []
+    for i in range(1,12+1):
+        MONTH_SHORT_NAMES.append(calendar.month_abbr[i].lower())
+
+def GetMonthNoForShortName(inp):
+    try:
+        return MONTH_SHORT_NAMES.index(inp.lower())+1
+    except ValueError:
+        return -1
+
+def GetWeekDayNoForShortName(inp):
+    try:
+        return WEEK_DAY_SHORT_NAMES.index(inp.lower())+1
+    except ValueError:
+        return -1
 
 def SetDefaultValuesDomDow(entry):
     """modify global defaults based on entrie's dom/dow"""
+    global DEFAULT_VALUES
     if REGEX_PATTERNS['astreisk'].match(entry['dom']) and REGEX_PATTERNS['astreisk'].match(entry['dow']):
         """lets use global defaults"""
         pass
@@ -85,6 +112,8 @@ def SetDefaultValuesDomDow(entry):
         pass
 
 def SetDefaultValues():
+    global DEFAULT_VALUES
+
     td = pytz.datetime.datetime.now()
     DEFAULT_VALUES['year'] = [td.year]
     DEFAULT_VALUES['minute'] = [x for x in range(0,59+1)]
@@ -155,8 +184,18 @@ def NormalizeEntry(inp,stepStartVal=1):
 def ExpandMonths(inp):
     if REGEX_PATTERNS['astreisk'].match(inp):
         return DEFAULT_VALUES['month']
-    else:
-        return NormalizeEntry(inp)
+    elif REGEX_PATTERNS['month_abbr'].match(inp):
+        if REGEX_PATTERNS['list'].search(inp):
+            monthNames = inp.split(',')
+            months = []
+            for m in monthNames:
+                months.append(str(GetMonthNoForShortName(m)))
+
+            inp = ','.join(months)
+        else:
+            inp = str(GetMonthNoForShortName(inp))
+
+    return NormalizeEntry(inp)
 
 def ExpandDoM(inp):
     if REGEX_PATTERNS['astreisk'].match(inp):
@@ -167,8 +206,18 @@ def ExpandDoM(inp):
 def ExpandDoW(inp):
     if REGEX_PATTERNS['astreisk'].match(inp):
         return DEFAULT_VALUES['dow']
-    else:
-        return NormalizeEntry(inp)
+    elif REGEX_PATTERNS['week_day_abbr'].match(inp):
+        if REGEX_PATTERNS['list'].search(inp):
+            wdNames = inp.split(',')
+            wd = []
+            for m in wdNames:
+                wd.append(str(GetWeekDayNoForShortName(m)))
+
+            inp = ','.join(wd)
+        else:
+            inp = str(GetWeekDayNoForShortName(inp))
+
+    return NormalizeEntry(inp)
 
 def ExpandHour(inp):
     if REGEX_PATTERNS['astreisk'].match(inp):
@@ -190,8 +239,9 @@ def GetEntryAsTimeStamps(record,tz):
 
     year = DEFAULT_VALUES['year'][0]
     expandedMonth = ExpandMonths(record['month'])
-    expandedDoM = ExpandDoM(record['dom'])
     expandedDoW = ExpandDoW(record['dow'])
+
+    expandedDoM = ExpandDoM(record['dom'])
     expandedHours = ExpandHour(record['hour'])
     expandedMins = ExpandMinutes(record['minute'])
 
@@ -371,6 +421,7 @@ def ConvertAsRangeIfPossible(val):
     vals = [int(v) for v in val.split(',')]
     v1 = vals[0]
     stepVal = vals[1]-vals[0]
+    #stepVal = 1
     for v in vals[1:]:
         if v1+stepVal != v:
             return val
@@ -378,7 +429,7 @@ def ConvertAsRangeIfPossible(val):
             v1 = v
 
     if v1 == vals[-1]:
-        if stepVal == 1:
+        if stepVal == 1 or len(vals)==2:
             return "{0}-{1}".format(vals[0],vals[-1])
         else:
             return "{0}-{1}/{2}".format(vals[0],vals[-1],stepVal)
@@ -630,6 +681,8 @@ def Main(inFile,outFile=None):
     else:
         outHand=open(outFile,'w')
 
+    SetWeekDayShortNames()
+    SetMonthShortNames()
     with open(inFile) as cronFileHandle:
         serverTz = ''
         jobTz = ''
