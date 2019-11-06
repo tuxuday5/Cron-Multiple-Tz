@@ -6,8 +6,8 @@ PATH=/usr/lib/sysstat:/usr/sbin:/usr/sbin:/usr/bin:/sbin:/bin
 # The first element of the path is a directory where the debian-sa1
 # script is located
 PATH=/usr/lib/sysstat:/usr/sbin:/usr/sbin:/usr/bin:/sbin:/bin
-# JOB_TZ=Europe/London
-* 20 30,31 3 1-7 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+## JOB_TZ=Europe/London
+#* 20 30,31 3 1-7 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
 ### JOB_TZ=Europe/London
 ###* 20 1-30 10 * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
 ##* 20 30/2 10 * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
@@ -18,7 +18,7 @@ PATH=/usr/lib/sysstat:/usr/sbin:/usr/sbin:/usr/bin:/sbin:/bin
 #30 10 6-10 12 * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
 ##
 ## JOB_TZ=Australia/Perth
-#30 10 16-20 12 * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+#30 10 16-20 12/2 * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
 ##
 ## JOB_TZ=Australia/Melbourne
 #30 10 26-31 12 * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
@@ -27,7 +27,7 @@ PATH=/usr/lib/sysstat:/usr/sbin:/usr/sbin:/usr/bin:/sbin:/bin
 #30 10 2-6 1 * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
 
 #JOB_TZ=Asia/Tokyo
-5-10,20-30/2 6,7 8 7 1 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
+5-10,20-30/2 6,7 8 7 mon,sun root command -v debian-sa1 > /dev/null && debian-sa1 1 1
 ## JOB_TZ=Europe/London
 #* 20 1-10 3 1-7 root command -v debian-sa1 > /dev/null && debian-sa1 1 1
 ## JOB_TZ=Europe/London
