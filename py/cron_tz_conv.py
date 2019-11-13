@@ -9,6 +9,12 @@ import sys
 class InvalidCronEntryError(Exception):
     pass
 
+class SqueezeFieldObject():
+    def __init__(self,field,minimum,maximum):
+        self.sqzField = field
+        self.min = minimum
+        self.max = maximum
+
 class CronEntry():
     """ this is just a placeholder. so that related values to an entry 
     can be stored in a single var. enough of dict style ref."""
@@ -54,6 +60,7 @@ REGEX_PATTERNS = {
     'variable' : re.compile('^\s*\w+='),
     'parse_entry' : re.compile('\s'),
     'astreisk' : re.compile('^\s*\*\s*$'),
+    'is_num_only' : re.compile('^\s*\d+\s*$'),
     'number' : re.compile('\d'),
     'range' : re.compile('-'),
     'list' : re.compile(','),
@@ -66,8 +73,20 @@ ENTRY_ORDER = ['minute', 'hour', 'dom', 'month', 'dow', 'command']
 ENTRY_TIME_FIELDS = [ 'month', 'dom', 'dow', 'hour', 'minute' ]
 ENTRY_SORT_ORDER = [ 'month', 'dom', 'hour', 'minute', 'dow'] ## sort in this order
 SQUEEZE_ORDER = [ 'minute', 'hour', 'dom', 'month', 'dow'] ## squeeze in this order
+SQUEEZE_FILED_OBJS = {}
+
 WEEK_DAY_SHORT_NAMES = []
 MONTH_SHORT_NAMES = []
+
+def SetSqueezeFieldObjects():
+    global SQUEEZE_FILED_OBJS
+
+    SQUEEZE_FILED_OBJS['dom'] =  SqueezeFieldObject('dom',1,31)
+    SQUEEZE_FILED_OBJS['dow'] =  SqueezeFieldObject('dow',1,7)
+    SQUEEZE_FILED_OBJS['month'] =  SqueezeFieldObject('month',1,12)
+    SQUEEZE_FILED_OBJS['minute'] =  SqueezeFieldObject('minute',0,59)
+    SQUEEZE_FILED_OBJS['hour'] =  SqueezeFieldObject('hour',0,59)
+
 
 def SetWeekDayShortNames():
     global WEEK_DAY_SHORT_NAMES
@@ -118,7 +137,7 @@ def SetDefaultValues():
     DEFAULT_VALUES['year'] = [td.year]
     DEFAULT_VALUES['minute'] = [x for x in range(0,59+1)]
     DEFAULT_VALUES['hour'] = [x for x in range(0,23+1)]
-    DEFAULT_VALUES['month'] = [1] # for month it is ok.
+    DEFAULT_VALUES['month'] = [td.month] # for month it is ok.
     DEFAULT_VALUES['dom'] = [] # since its either dom/dow, we take default dow. 
     DEFAULT_VALUES['dow'] = [x for x in range(1,7+1)]
 
@@ -245,10 +264,20 @@ def GetEntryAsTimeStamps(record,tz):
     expandedHours = ExpandHour(record['hour'])
     expandedMins = ExpandMinutes(record['minute'])
 
-    tsList = []
     for month in expandedMonth:
         """loop through all the days for specified months.
         if dom/dow is set, then add that datetime()"""
+
+        """
+        when both dow & dom are populated.
+        Its only a "bizarre behavior" -> Paul Vixie says in cron.c code file:
+        /* the dom/dow situation is odd.  '* * 1,15 * Sun' will run on the
+        * first and fifteenth AND every Sunday;  '* * * * Sun' will run *only*
+        * on Sundays;  '* * 1,15 * *' will run *only* the 1st and 15th.  this
+        * is why we keep 'e->dow_star' and 'e->dom_star'.  yes, it's bizarre.
+        * like many bizarre things, it's the standard.
+        */
+        """
         for d in calendar.Calendar(firstweekday=1).itermonthdates(year,month):
             if d.month != month: #itermonthdates() returns complete weeks at beg,end
                 continue 
@@ -268,13 +297,10 @@ def GetEntryAsTimeStamps(record,tz):
                 for hr in expandedHours:
                     for mins in expandedMins:
                         ts = pytz.datetime.datetime(d.year,d.month,d.day,hr,mins)
-                        if ts in tsList:
-                            continue
                         cronEntryObj = CronEntry(record,serverTz=tz)
                         cronEntryObj.ts = ts
                         cronEntryObj.dowHit = dowHit
                         cronEntryObj.domHit = domHit
-                        tsList.append(ts)
                         expandedTs.append(cronEntryObj)
 
     return expandedTs
@@ -328,31 +354,32 @@ def ReplaceEntryWithServerTs(entryObj):
         retVal['month'] = str(serverTs.month)
 
     if entryObj.domHit and entryObj.dowHit:
-        """both dom & dow were configured in cron entry(dow can be from default too)
-        if dow contains specific weekdays, 1-2 or 1,2,3 or *. then output dow should reflect that
-        this is to help the SqueezeOnField* routines"""
+        """both dom & dow were configured in cron entry(dow can be from default too)"""
         retVal['dom'] = str(serverTs.day)
-        if REGEX_PATTERNS['range'].search(entry['dow']) \
-                or REGEX_PATTERNS['list'].search(entry['dow']) \
-                or REGEX_PATTERNS['astreisk'].match(entry['dow']):
+        if REGEX_PATTERNS['astreisk'].match(entry['dow']):
             retVal['dow'] = entry['dow']
         else:
             retVal['dow'] = str(serverTs.isoweekday())
     elif entryObj.domHit:
         retVal['dom'] = str(serverTs.day)
-        retVal['dow'] = entry['dow']
+        #retVal['dow'] = '*'
+        if REGEX_PATTERNS['astreisk'].match(entry['dow']):
+            retVal['dow'] = entry['dow']
+        else:
+            retVal['dow'] = str(serverTs.isoweekday())
     elif entryObj.dowHit:
         if REGEX_PATTERNS['astreisk'].match(entry['month']):
             retVal['dom'] = entry['dom']
         else:
             """ for tz shift in mins. wrapping for next month
-            * 20 3 30,31 1-7 for London->India produces 31st becomes first of next month
+            * 20 3 30,31 1-7 for London->India 31st becomes first of next month
             30-59 1 3 31 1-7 #30th
             00-29 2 3 31 1-7 #30th
             30-59 0 4 1 1-7 #31st
             00-29 1 4 1 1-7 #31st
             """
 
+            #retVal['dom'] = str(serverTs.day)
             expandedMonth = ExpandMonths(entry['month'])
             if serverTs.month in expandedMonth:
                 retVal['dom'] = str(serverTs.day)
@@ -369,9 +396,7 @@ def ReplaceEntryWithServerTs(entryObj):
                 else:
                     retVal['dom'] = entry['dom']
 
-        if REGEX_PATTERNS['range'].search(entry['dow']) \
-                or REGEX_PATTERNS['list'].search(entry['dow']) \
-                or REGEX_PATTERNS['astreisk'].match(entry['dow']):
+        if REGEX_PATTERNS['astreisk'].match(entry['dow']):
             retVal['dow'] = entry['dow']
         else:
             retVal['dow'] = str(serverTs.isoweekday())
@@ -413,26 +438,52 @@ def GenerateSortKey(entry):
 
     return int(key)
 
-def ConvertAsRangeIfPossible(val):
+def ConvertAsRangeIfPossible(obj,val):
     """Used by SqueezeOnField* routines. given a list 1,2,3 convert to 1-3"""
     if not REGEX_PATTERNS['list'].search(val):
         return val
 
+    #print(obj.sqzField,val)
     vals = [int(v) for v in val.split(',')]
     v1 = vals[0]
     stepVal = vals[1]-vals[0]
-    #stepVal = 1
+    iterCount = 1
+    small = large = v1
     for v in vals[1:]:
+        iterCount+=1
         if v1+stepVal != v:
-            return val
+            break
         else:
             v1 = v
+        if small > v:
+            small = v
+        if large < v:
+            large = v
 
-    if v1 == vals[-1]:
-        if stepVal == 1 or len(vals)==2:
-            return "{0}-{1}".format(vals[0],vals[-1])
+    if obj.sqzField == 'dow':
+        v1 = vals[0]
+        if AreDoWValuesInSeq(obj,vals[0],vals[1]):
+            stepVal=1
         else:
-            return "{0}-{1}/{2}".format(vals[0],vals[-1],stepVal)
+            stepVal = vals[1]-vals[0]
+        iterCount=1
+        small = large = v1
+        for v in vals[1:]:
+            iterCount+=1
+            if AreDoWValuesInSeq(obj,v1,v):
+                v1 = v
+            else:
+                break
+            if small > v:
+                small = v
+            if large < v:
+                large = v
+
+    if len(vals) == iterCount:
+        if stepVal == 1 or len(vals)==2:
+            return "{0}-{1}".format(small,large)
+        else:
+            return "{0}-{1}/{2}".format(small,large,stepVal)
     else:
         return val
 
@@ -443,18 +494,76 @@ def EntryFieldsSame(e1,e2,fields):
 
     return v1==v2
 
-def SqueezeOnFieldForTzShiftWithMins(entries,sqzField):
+def AreDoMValuesInSeq(details,curVal,nextVal):
+    if curVal+1 == nextVal:
+        return True
+    elif curVal == 30 and nextVal == details.min:
+        return True
+    elif curVal == 31 and nextVal == details.min:
+        return True
+    elif curVal == 28  and nextVal == details.min:
+        return True
+    elif curVal == 29  and nextVal == details.min:
+        return True
+    else:
+        return False
+
+def AreDoWValuesInSeq(details,curVal,nextVal):
+    if curVal+1 == nextVal:
+        return True
+    elif curVal == 7 and nextVal == details.min:
+        return True
+    elif curVal == 0 and nextVal == details.min:
+        return True
+    else:
+        return False
+
+def AreMonthValuesInSeq(details,curVal,nextVal):
+    if curVal+1 == nextVal:
+        return True
+    elif curVal == 12 and nextVal == details.min:
+        return True
+    else:
+        return False
+
+def AreHourValuesInSeq(details,curVal,nextVal):
+    if curVal+1 == nextVal:
+        return True
+    elif curVal == 59 and nextVal == details.min:
+        return True
+    else:
+        return False
+
+def AreValuesInSeq(details,cur,nxt):
+    f = details.sqzField
+    curVal = int(cur[f])
+    nextVal = int(nxt[f])
+
+    if f == 'dom':
+        return AreDoMValuesInSeq(details,curVal,nextVal)
+    elif f == 'dow':
+        return AreDoWValuesInSeq(details,curVal,nextVal)
+    elif f == 'month':
+        return AreMonthValuesInSeq(details,curVal,nextVal)
+    elif f == 'minute' or f == 'hour':
+        return AreHourValuesInSeq(details,curVal,nextVal)
+    else:
+        return False
+
+
+def SqueezeOnFieldForTzShiftWithMins(entries,sqzFieldObjs):
     """
     call this only after calling SqueezeOnField(),  GetUniqueEntries(), SqueezeOnField() 
     similar to SqueezeOnField(), but squeezes entries where tz shift is in mins too.
-            30-59 1 3 30 1-7 
-            00-29 2 3 30 1-7
-            30-59 0 3 31 1-7 
-            00-29 1 3 31 1-7
 
-            will become
-            30-59 0 3 30-31 1-7 
-            00-29 1 3 30-31 1-7
+    30-59 1 2 3 6 
+    00-29 2 2 3 6 
+    30-59 1 3 3 7 
+    00-29 2 3 3 7 
+
+    sould become 
+    30-59 1 2-3 3  6-7
+    00-29 2 2-3 3  6-7
 
     this routine does validtion to check the first 4 entries resemeble as above.
     if it does then proceeds to squeeze
@@ -462,28 +571,25 @@ def SqueezeOnFieldForTzShiftWithMins(entries,sqzField):
     if len(entries)<4:
         return entries
 
-    if sqzField not in ENTRY_TIME_FIELDS:
-        print("Given sqzField {0} not in ENTRY_TIME_FIELDS".format(sqzField),file=sys.stderr)
-        return entries
+    (cur1,cur2,next1,next2) = entries[0:4]
+    sqzFields = [ f.sqzField for f in sqzFieldObjs]
 
-    (prev1,prev2,cur1,cur2) = entries[0:4]
+    for sqzField in sqzFields:
+        if sqzField not in ENTRY_TIME_FIELDS:
+            print("Given sqzField {0} not in ENTRY_TIME_FIELDS".format(sqzField),file=sys.stderr)
+            return entries
 
-    if REGEX_PATTERNS['range'].search(prev1['minute']) and \
-        REGEX_PATTERNS['range'].search(prev2['minute']) and \
-        REGEX_PATTERNS['range'].search(cur1['minute']) and \
-        REGEX_PATTERNS['range'].search(cur2['minute']):
-        pass
-    elif REGEX_PATTERNS['list'].search(prev1['minute']) and \
-        REGEX_PATTERNS['list'].search(prev2['minute']) and \
-        REGEX_PATTERNS['list'].search(cur1['minute']) and \
-        REGEX_PATTERNS['list'].search(cur2['minute']):
-        pass
-    else:
-        return entries
+    for entry in entries[0:4]:
+        if REGEX_PATTERNS['range'].search(entry['minute']) or \
+            REGEX_PATTERNS['list'].search(entry['minute']) or \
+                REGEX_PATTERNS['number'].search(entry['minute']):
+                pass
+        else:
+            return entries
 
     try:
-        if int(prev1['hour'])+1 == int(prev2['hour']) and \
-                int(cur1['hour'])+1 == int(cur2['hour']):
+        if int(cur1['hour'])+1 == int(cur2['hour']) and \
+                int(next1['hour'])+1 == int(next2['hour']):
             pass
         else:
             return entries
@@ -492,110 +598,113 @@ def SqueezeOnFieldForTzShiftWithMins(entries,sqzField):
         return entries
 
     """only sqzField should inc, other fields should be same - so can squeezed"""
-    otherThanSqzField = set(ENTRY_TIME_FIELDS).difference(('hour','minute',sqzField))
-    tzShiftAdjInMinsFlag = False
+    otherThanSqzField = set(ENTRY_TIME_FIELDS).difference(('hour',*sqzFields))
+    canSqueeze = True
 
-    stepVal=1
-    try:
-        stepVal=int(cur1[sqzField]) - int(prev1[sqzField])
-        if int(prev1[sqzField])+stepVal == int(cur1[sqzField]) and \
-                int(prev2[sqzField])+stepVal == int(cur2[sqzField]):
-            if EntryFieldsSame(prev1,cur1,otherThanSqzField) \
-                and EntryFieldsSame(prev2,cur2,otherThanSqzField):
-                tzShiftAdjInMinsFlag = True
+    for sqzFieldObj in sqzFieldObjs:
+        sqzField = sqzFieldObj.sqzField
+        try:
+            if AreValuesInSeq(sqzFieldObj,cur1,next1) and \
+                    AreValuesInSeq(sqzFieldObj,cur2,next2) and \
+                    EntryFieldsSame(cur1,next1,otherThanSqzField) and \
+                    EntryFieldsSame(cur2,next2,otherThanSqzField):
+                pass
             else:
-                tzShiftAdjInMinsFlag = False
-        else:
-            tzShiftAdjInMinsFlag = False
-    except ValueError:
-        """sqzField is list,range or astreisk"""
-        return entries
+                canSqueeze = False
+                break
+        except ValueError:
+            """sqzField is list,range or astreisk"""
+            canSqueeze = False
 
-    if tzShiftAdjInMinsFlag == False:
+    if canSqueeze == False:
         return entries
 
     squeezedEntries = []
-    otherFields = ENTRY_TIME_FIELDS.copy()
-    otherFields.remove(sqzField)
-
-    prev1 = entries[0]
-    squeeze1 = prev1.copy()
-
-    prev2 = entries[1]
-    squeeze2 = prev2.copy()
-
-    stepVal=int(entries[2][sqzField]) - int(prev1[sqzField])
-
-    curIdx = 2
+    squeeze1 = cur1.copy()
+    squeeze2 = cur2.copy()
     lastEntryAccounted = False
     totaEntries=len(entries)
+    curIdx = 2
     while curIdx+2 <= totaEntries:
         lastEntryAccounted = False
         canSqueeze = True
 
-        cur1= entries[curIdx]
-        cur2= entries[curIdx+1]
+        next1= entries[curIdx]
+        next2= entries[curIdx+1]
 
-        if REGEX_PATTERNS['astreisk'].search(prev1[sqzField]) or \
-            REGEX_PATTERNS['astreisk'].search(prev2[sqzField]) or \
-            REGEX_PATTERNS['astreisk'].search(cur1[sqzField]) or \
-            REGEX_PATTERNS['astreisk'].search(cur2[sqzField]):
+        try:
+            if int(cur1['hour'])+1 == int(cur2['hour']) and \
+                    int(next1['hour'])+1 == int(next2['hour']):
+                pass
+            else:
+                canSqueeze = False
+        except ValueError:
+            """hour is list,range or astreisk"""
             canSqueeze = False
-        elif REGEX_PATTERNS['range'].search(prev1[sqzField]) or \
-            REGEX_PATTERNS['range'].search(prev2[sqzField]) or \
-            REGEX_PATTERNS['range'].search(cur1[sqzField]) or \
-            REGEX_PATTERNS['range'].search(cur2[sqzField]):
-            canSqueeze = False
-        elif REGEX_PATTERNS['list'].search(prev1[sqzField]) or \
-            REGEX_PATTERNS['list'].search(prev2[sqzField]) or \
-            REGEX_PATTERNS['list'].search(cur1[sqzField]) or \
-            REGEX_PATTERNS['list'].search(cur2[sqzField]):
-            canSqueeze = False
-        else:
-            pass
+
+        if canSqueeze:
+            for sqzField in sqzFields:
+                if REGEX_PATTERNS['is_num_only'].match(cur1[sqzField]) and \
+                    REGEX_PATTERNS['is_num_only'].match(cur2[sqzField]) and \
+                    REGEX_PATTERNS['is_num_only'].match(next1[sqzField]) and \
+                    REGEX_PATTERNS['is_num_only'].match(next2[sqzField]):
+                    pass
+                else:
+                    canSqueeze = False
+                    break
+
+        if canSqueeze:
+            for sqzFieldObj in sqzFieldObjs:
+                sqzField = sqzFieldObj.sqzField
+                try:
+                    if AreValuesInSeq(sqzFieldObj,cur1,next1) and \
+                            AreValuesInSeq(sqzFieldObj,cur2,next2) and \
+                            EntryFieldsSame(cur1,next1,otherThanSqzField) and \
+                            EntryFieldsSame(cur2,next2,otherThanSqzField):
+                        pass
+                    else:
+                        canSqueeze = False
+                        break
+                except ValueError:
+                    """sqzField is list,range or astreisk"""
+                    canSqueeze = False
+                    break
 
         if canSqueeze == True:
-            if int(prev1[sqzField])+stepVal == int(cur1[sqzField]) and \
-                    int(prev2[sqzField])+stepVal == int(cur2[sqzField]):
-                if EntryFieldsSame(prev1,cur1,otherFields) and \
-                        EntryFieldsSame(prev2,cur2,otherFields):
-                    squeeze1[sqzField] += ',' + cur1[sqzField]
-                    squeeze2[sqzField] += ',' + cur2[sqzField]
-                    prev1 = cur1
-                    prev2 = cur2
-                    lastEntryAccounted = True
-                    curIdx+=2
-                    continue
-                else:
-                    pass
-            else:
-                pass
+            for sqzField in sqzFields:
+                squeeze1[sqzField] += ',' + next1[sqzField]
+                squeeze2[sqzField] += ',' + next2[sqzField]
+            cur1 = next1
+            cur2 = next2
+            lastEntryAccounted = True
+            curIdx+=2
+            continue
         else:
-            pass
-
-        AppendToSqueezeList(squeezedEntries,sqzField,squeeze1,squeeze2)
-        prev1 = cur1
-        prev2 = cur2
-        squeeze1 = prev1.copy()
-        squeeze2 = prev2.copy()
-        curIdx+=2
+            AppendToSqueezeList(squeezedEntries,sqzFieldObjs,squeeze1,squeeze2)
+            cur1 = next1
+            cur2 = next2
+            squeeze1 = cur1.copy()
+            squeeze2 = cur2.copy()
+            curIdx+=2
 
     if lastEntryAccounted:
-        AppendToSqueezeList(squeezedEntries,sqzField,squeeze1,squeeze2)
+        AppendToSqueezeList(squeezedEntries,sqzFieldObjs,squeeze1,squeeze2)
     else:
-        squeezedEntries.append(cur1)
-        squeezedEntries.append(cur2)
+        squeezedEntries.append(next1)
+        squeezedEntries.append(next2)
 
     return squeezedEntries
 
-def AppendToSqueezeList(li,sf,s1,s2=None):
+def AppendToSqueezeList(li,sfObjs,s1,s2=None):
     for s in (s1,s2):
         if s is None:
             continue
-        s[sf] = ConvertAsRangeIfPossible(s[sf])
+        for sfObj in sfObjs:
+            s[sfObj.sqzField] = ConvertAsRangeIfPossible(sfObj,s[sfObj.sqzField])
+
         li.append(s)
 
-def SqueezeOnField(entries,sqzField):
+def SqueezeOnField(entries,sqzFieldObj):
     """entries are already sorted. 
     for n in entries:
         if n.sqzField = n+1.sqzField
@@ -603,61 +712,98 @@ def SqueezeOnField(entries,sqzField):
         else
          can't squeeze, append this entry and continue
     """
-    if len(entries)==1:
+    if len(entries)<3:
         return entries
 
+    sqzField = sqzFieldObj.sqzField
     if sqzField not in ENTRY_TIME_FIELDS:
         print("Given sqzField {0} not in ENTRY_TIME_FIELDS".format(sqzField),file=sys.stderr)
         return entries
 
     squeezedEntries = []
+    curSeqEntries = []
     prev = entries[0]
-    curSqueezeEntry = prev.copy()
+    curSeqEntries.append(prev)
 
-    if REGEX_PATTERNS['astreisk'].match(prev[sqzField]) or \
-            REGEX_PATTERNS['range'].search(prev[sqzField]) or \
-            REGEX_PATTERNS['list'].search(prev[sqzField]):
+    if REGEX_PATTERNS['is_num_only'].match(prev[sqzField]):
+        pass
+    else:
         return entries
 
     otherFields = ENTRY_TIME_FIELDS.copy()
     otherFields.remove(sqzField)
 
-    lastEntryAccounted = False
     stepVal = int(entries[1][sqzField]) - int(entries[0][sqzField])
-    for cur in entries[1:]:
+    totalEntries=len(entries)
+    totalEntriesLessOne = totalEntries-1
+    curIdx=1
+    curSeqCount=0
+    lastEntryAccounted = False
+    while curIdx < totalEntries:
+        cur = entries[curIdx]
         lastEntryAccounted = False
         canSqueeze = True
 
-        if REGEX_PATTERNS['astreisk'].match(prev[sqzField]) or \
-                REGEX_PATTERNS['astreisk'].match(cur[sqzField]) or \
-                REGEX_PATTERNS['range'].search(prev[sqzField]) or \
-                REGEX_PATTERNS['range'].search(cur[sqzField]) or \
-                REGEX_PATTERNS['list'].search(prev[sqzField]) or \
-                REGEX_PATTERNS['list'].search(cur[sqzField]):
-            canSqueeze = False
-        else:
+        if REGEX_PATTERNS['is_num_only'].match(prev[sqzField]) and \
+                REGEX_PATTERNS['is_num_only'].match(cur[sqzField]):
             pass
+        else:
+            canSqueeze = False
 
         if canSqueeze == True:
-            if int(prev[sqzField])+stepVal == int(cur[sqzField]):
-                if EntryFieldsSame(prev,cur,otherFields):
-                    curSqueezeEntry[sqzField] += ',' + cur[sqzField]
-                    prev = cur
-                    lastEntryAccounted = True
-                    continue
-                else:
-                    pass
-            else:
+            if int(prev[sqzField])+stepVal == int(cur[sqzField]) and \
+                    EntryFieldsSame(prev,cur,otherFields):
                 pass
-        else:
-            pass
+            else:
+                canSqueeze = False
 
-        AppendToSqueezeList(squeezedEntries,sqzField,curSqueezeEntry)
+        if canSqueeze:
+            curSeqCount+=1
+            curSeqEntries.append(cur)
+            lastEntryAccounted = True
+        else:
+            if curSeqCount > 2:
+                """seq is over, and we have gatherered enough seq to sqz
+                cur contains that isn't part of prev seq"""
+                sqzEntry = curSeqEntries[0]
+                for ent in curSeqEntries[1:]:
+                    sqzEntry[sqzField] += ',' + ent[sqzField]
+                AppendToSqueezeList(squeezedEntries,[sqzFieldObj],sqzEntry)
+            elif curSeqCount == 0:
+                """basic validation for sqz failed, sqzField isn't num. maybe list/range"""
+                AppendToSqueezeList(squeezedEntries,[sqzFieldObj],curSeqEntries[0])
+            else:
+                """we have two entries in curSeqEntries.
+                two will always form a seq if other fields are same. 
+                so append curSeqEntries[0] - this is def not part of any seq, and curSeqEntries[0]=[1]
+                we still not sure wether [0] and [1] are seq, so curIdx--"""
+                curIdx-=1
+                AppendToSqueezeList(squeezedEntries,[sqzFieldObj],curSeqEntries[0])
+                #print(prev,cur,curIdx,curSeqEntries)
+                cur = curSeqEntries[1]
+
+            curSeqCount=0
+            curSeqEntries.clear()
+            curSeqEntries.append(cur)
+            try:
+                if curIdx < totalEntriesLessOne:
+                    stepVal = int(entries[curIdx+1][sqzField]) - int(entries[curIdx][sqzField])
+            except ValueError:
+                """might fail in REGEX_PATTERNS['is_num_only']"""
+                pass
+
         prev = cur
-        curSqueezeEntry = prev.copy()
+        curIdx+=1
 
     if lastEntryAccounted:
-        AppendToSqueezeList(squeezedEntries,sqzField,curSqueezeEntry)
+        if curSeqCount > 2:
+            sqzEntry = curSeqEntries[0]
+            for ent in curSeqEntries[1:]:
+                sqzEntry[sqzField] += ',' + ent[sqzField]
+            AppendToSqueezeList(squeezedEntries,[sqzFieldObj],sqzEntry)
+        else:
+            for ent in curSeqEntries:
+                AppendToSqueezeList(squeezedEntries,[sqzFieldObj],ent)
     else:
         squeezedEntries.append(cur)
 
@@ -683,6 +829,7 @@ def Main(inFile,outFile=None):
 
     SetWeekDayShortNames()
     SetMonthShortNames()
+    SetSqueezeFieldObjects()
     with open(inFile) as cronFileHandle:
         serverTz = ''
         jobTz = ''
@@ -709,41 +856,25 @@ def Main(inFile,outFile=None):
 
                 if isJobTzSet:
                     #tzAdjustedEntryUnique = list(map(dict, frozenset(frozenset(tuple(e.items()) for e in tzAdjustedEntry))))
-                    tzAdjustedEntry = AdjustForTz(entryAsRecord,serverTz,jobTz)
+                    adjEntries = AdjustForTz(entryAsRecord,serverTz,jobTz)
 
-                    #PrintEntriesForDebug(tzAdjustedEntry,"AdjustedEntry")
+                    #PrintEntriesForDebug(adjEntries,"AdjustedEntry")
+                    for x in ([1,2]):
+                        for k in SQUEEZE_ORDER:
+                            adjEntries.sort(key=GenerateSortKey)
+                            adjEntriesUnq = GetUniqueEntries(adjEntries)
+                            adjEntriesSqz = SqueezeOnField(adjEntriesUnq,SQUEEZE_FILED_OBJS[k])
+                            adjEntries    = adjEntriesSqz
 
-                    tzAdjustedEntryUnique = GetUniqueEntries(tzAdjustedEntry)
-                    tzAdjustedEntryUnique.sort(key=GenerateSortKey)
-
-                    PrintLine('',fileObj=outHand,end="\n")
-                    squeezedEntries = tzAdjustedEntryUnique
-
-                    #PrintEntriesForDebug(tzAdjustedEntryUnique,"AdjustedEntryUnique")
-
-                    for k in SQUEEZE_ORDER:
-                        squeezedEntries = SqueezeOnField(squeezedEntries,k)
-
-                    squeezedEntriesUnique = GetUniqueEntries(squeezedEntries)
-                    squeezedEntriesUnique.sort(key=GenerateSortKey)
-
-                    for k in SQUEEZE_ORDER:
-                        squeezedEntriesUnique = SqueezeOnField(squeezedEntriesUnique,k)
-
-                    #PrintEntriesForDebug(squeezedEntriesUnique,"squeezedEntriesUnique*2")
-                    squeezedEntriesUnique2 = squeezedEntriesUnique
 
                     ## lets try squeezedEntriesUnique for tz shift with mins, like india-england
-                    squeezedEntriesUnique2 = GetUniqueEntries(squeezedEntriesUnique)
-                    squeezedEntriesUnique2.sort(key=GenerateSortKey)
+                    adjEntries.sort(key=GenerateSortKey)
+                    adjEntriesUnq = GetUniqueEntries(adjEntries)
 
-                    squeezeKeysForTzShiftWithMins = SQUEEZE_ORDER.copy()
-                    squeezeKeysForTzShiftWithMins.remove('minute')
-                    squeezeKeysForTzShiftWithMins.remove('hour')
-                    for k in squeezeKeysForTzShiftWithMins:
-                        squeezedEntriesUnique2 = SqueezeOnFieldForTzShiftWithMins(squeezedEntriesUnique2,k)
+                    sqzFieldObjs = [SQUEEZE_FILED_OBJS['dom'],SQUEEZE_FILED_OBJS['dow']]
+                    adjEntries = SqueezeOnFieldForTzShiftWithMins(adjEntriesUnq,sqzFieldObjs)
 
-                    for entry in squeezedEntriesUnique2:
+                    for entry in adjEntries:
                         PrintEntry(entry,fileObj=outHand)
 
                     isJobTzSet = False
